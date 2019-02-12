@@ -4,15 +4,12 @@ Diplomacy is a strategic board game that takes place in WW1 era. Each player rep
 
 ## Quick Start
 
-`
+```
 $ git clone https://github.com/simbrams/CECS-475-Diplomacy.git
-
 $ cd CECS-475-Diplomacy
-
 $ npm install
-
 $ npm start
-`
+```
 
 ## 1 | Release notes
 
