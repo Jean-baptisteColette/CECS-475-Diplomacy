@@ -15,7 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace server
+namespace Diplomacy
 {
     public class Startup
     {
@@ -38,8 +38,11 @@ namespace server
         {
             services.AddDbContext<DiplomacyContext>(options =>
                                                    options.UseSqlServer(Configuration.GetConnectionString("DiplomacyConnectionString")));
+
+            // HangFire is used to perform background processing.                                        
             services.AddHangfire(configuration => configuration.UseMemoryStorage());
 
+            // Swagger is a GUI for API Documentations that display all available requests in the server.
             services.AddSwaggerGen(options =>
             {
                 options.DescribeAllEnumsAsStrings();
@@ -71,7 +74,7 @@ namespace server
             {
                 c.SwaggerEndpoint("/swagger/v1/swagger.json", "Diplomacy API V1");
             });
-            
+
             app.UseHttpsRedirection();
             app.UseMvc();
         }
