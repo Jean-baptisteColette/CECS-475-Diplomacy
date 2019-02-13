@@ -14,6 +14,8 @@ $ dotnet build
 $ dotnet run
 ```
 
+then go to -> http://localhost:5000/swagger
+
 ## Visual Studio Code Users
 
 Just run the ".NET Core Launch (console)" Debug configuration.
