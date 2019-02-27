@@ -1,19 +1,28 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
+using Diplomacy.Data.Entities;
+using Diplomacy.Helpers;
+using Diplomacy.Models;
+using Diplomacy.Services;
 using Dipomacy.Data;
 using Hangfire;
 using Hangfire.MemoryStorage;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpsPolicy;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Diplomacy
 {
@@ -32,10 +41,15 @@ namespace Diplomacy
         }
         public IHostingEnvironment Env { get; }
         public IConfiguration Configuration { get; }
+        private const string SecretKey = "YZWNfqaakYN2E8sgBkBItHlOHEj7EMat";
+        private readonly SymmetricSecurityKey _signingKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(SecretKey));
+
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
             services.AddDbContext<DiplomacyContext>(options =>
                                                    options.UseSqlServer(Configuration.GetConnectionString("DiplomacyConnectionString")));
 
@@ -54,6 +68,92 @@ namespace Diplomacy
                 });
             });
 
+            var jwtAppSettingOptions = Configuration.GetSection(nameof(JwtIssuerOptions));
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                // Clock skew compensates for server time drift.
+                ClockSkew = TimeSpan.Zero,
+
+                // Ensure the token was issued by a trusted authorization server (default true):
+                ValidateIssuer = true,
+                ValidIssuer = jwtAppSettingOptions[nameof(JwtIssuerOptions.Issuer)],
+
+                // Ensure the token audience matches our audience value (default true):
+                ValidateAudience = true,
+                ValidAudience = jwtAppSettingOptions[nameof(JwtIssuerOptions.Audience)],
+
+                // Specify the key used to sign the token:
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = _signingKey,
+
+                // Ensure the token hasn't expired:
+                RequireExpirationTime = false,
+                ValidateLifetime = true
+            };
+
+            // Add Identity
+            services.AddIdentity<User, IdentityRole>()
+                .AddEntityFrameworkStores<DiplomacyContext>()
+                .AddDefaultTokenProviders();
+
+            //services.AddAuthentication().AddCookie().AddJwtBearer();
+            services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+
+            }).AddJwtBearer(configureOptions =>
+            {
+                configureOptions.ClaimsIssuer = jwtAppSettingOptions[nameof(JwtIssuerOptions.Issuer)];
+                configureOptions.TokenValidationParameters = tokenValidationParameters;
+                configureOptions.SaveToken = true;
+            });
+
+            services.Configure<IdentityOptions>(options =>
+            {
+                // Password settings
+                options.Password.RequireDigit = true;
+                options.Password.RequiredLength = 8;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequireUppercase = false;
+                options.Password.RequireLowercase = false;
+                options.Password.RequiredUniqueChars = 6;
+
+                // Lockout settings
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(30);
+                options.Lockout.MaxFailedAccessAttempts = 10;
+                options.Lockout.AllowedForNewUsers = true;
+
+                options.SignIn.RequireConfirmedEmail = true;
+
+                // User settings
+                options.User.RequireUniqueEmail = true;
+                options.ClaimsIdentity.UserIdClaimType = JwtRegisteredClaimNames.Jti;
+
+            });
+
+            // Adding IdentityServer4
+            services.AddIdentityServer()
+                .AddDeveloperSigningCredential()
+                .AddConfigurationStore(options =>
+                    {
+                        options.ConfigureDbContext = builder => builder.UseSqlServer(Configuration.GetConnectionString("DiplomacyConnectionString"));
+                    })
+                .AddOperationalStore(options =>
+                    {
+                        options.ConfigureDbContext = builder => builder.UseSqlServer(Configuration.GetConnectionString("DiplomacyConnectionString"));
+                        options.EnableTokenCleanup = true;
+                        options.TokenCleanupInterval = 3000;
+                    })
+                .AddAspNetIdentity<User>();
+
+            services.AddScoped<IJwtFactory, JwtFactory>();
+
+            services.AddAuthorization(options =>
+                        {
+                            options.AddPolicy("ApiUser", policy => policy.RequireClaim(Constants.Strings.JwtClaimIdentifiers.Rol, Constants.Strings.JwtClaims.ApiAccess));
+                        });
+
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
 
@@ -68,6 +168,13 @@ namespace Diplomacy
             {
                 app.UseHsts();
             }
+
+            app.UseHangfireServer();
+            app.UseAuthentication();
+
+            app.UseStaticFiles();
+            app.UseIdentityServer();
+            app.UseSession();
 
             app.UseSwagger()
             .UseSwaggerUI(c =>
