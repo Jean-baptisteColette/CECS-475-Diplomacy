@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Diplomacy.Data.Entities;
+using Diplomacy.Data.Repositories;
 using Diplomacy.Helpers;
 using Diplomacy.Models;
 using Diplomacy.Services;
@@ -148,12 +149,13 @@ namespace Diplomacy
                 .AddAspNetIdentity<User>();
 
             services.AddScoped<IJwtFactory, JwtFactory>();
+            services.AddScoped<IAuthRepository, AuthRepository>();
 
             services.AddAuthorization(options =>
                         {
                             options.AddPolicy("ApiUser", policy => policy.RequireClaim(Constants.Strings.JwtClaimIdentifiers.Rol, Constants.Strings.JwtClaims.ApiAccess));
                         });
-
+            services.AddSession();
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
 
